@@ -1,5 +1,5 @@
 ARG OUTPUT=/output
-FROM alpine:3.16 AS builder
+FROM alpine:edge AS builder
 RUN apk add --no-cache \
     autoconf \
     automake \
@@ -8,22 +8,20 @@ RUN apk add --no-cache \
     curl \
     dpkg \
     file \
-    gcc \
     g++ \
+    gcc \
     git \
-    libbsd \
     libc6-compat \
     libdrm-dev \
     libtool \
-    linux-headers \
     libxshmfence \
+    linux-headers \
     make \
     mesa-va-gallium \
     musl-dev \
     nghttp2-dev \
     pkgconfig \
-    xxd \
-    libbsd
+    xxd
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 FROM builder AS amd
@@ -36,7 +34,9 @@ ARG DESTDIR
 
 WORKDIR /tmp/amd
 
-RUN apk add xf86-video-amdgpu linux-firmware-amdgpu --no-cache --update-cache \
+RUN ls -la /usr/lib/
+
+RUN apk add  xf86-video-amdgpu linux-firmware-amdgpu --no-cache --update-cache \
  && apk add --no-cache -X http://dl-cdn.alpinelinux.org/alpine/edge/testing libva-utils \
  && mkdir -p "$OUTPUT/usr/bin" \
  && cp -a /usr/bin/vainfo "$OUTPUT/usr/bin" \
@@ -47,7 +47,7 @@ RUN apk add xf86-video-amdgpu linux-firmware-amdgpu --no-cache --update-cache \
  && cp -a /usr/lib/libdrm*.so* "$OUTPUT/usr/lib" \
  && cp -a /usr/lib/libbsd*.so* "$OUTPUT/usr/lib" \
  && cp -a /usr/lib/libxshmfence*.so* "$OUTPUT/usr/lib" \
- && cp -a /usr/lib/libkms*.so* "$OUTPUT/usr/lib" \
+ # && cp -a /usr/lib/libkms*.so* "$OUTPUT/usr/lib" \
  && cp -a /usr/lib/libxcb*.so* "$OUTPUT/usr/lib" \
  && cp -a /usr/lib/libffi*.so* "$OUTPUT/usr/lib" \
  && cp -a /usr/lib/libLLVM*.so* "$OUTPUT/usr/lib" \
@@ -66,20 +66,25 @@ RUN apk add xf86-video-amdgpu linux-firmware-amdgpu --no-cache --update-cache \
  && cp -a /lib/libz*.so* "$OUTPUT/usr/lib"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-FROM ghcr.io/linuxserver/plex:1.29.0
+from ghcr.io/linuxserver/plex:latest
 ARG OUTPUT
 
-# Install AMD drivers for HW decoding
+# Install AMD drivers
 RUN apt-get update \
- && apt-get install -y software-properties-common \
- && add-apt-repository ppa:oibaf/graphics-drivers -y \
- && apt-get update \
+ && apt-get install -y software-properties-common
+
+RUN add-apt-repository ppa:oibaf/graphics-drivers -y
+RUN curl -sL --retry 3 https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add - \
+ && add-apt-repository "deb https://repo.radeon.com/rocm/apt/latest $(lsb_release -s -c) main" -y
+
+RUN apt-get update \
  && apt-get install -y \
 	vainfo \
 	mesa-va-drivers \
 	mesa-vdpau-drivers \
 	libdrm-amdgpu1 \
 	libavutil56 \
+	rocm-opencl-runtime \
  && apt-get clean
 
 # Copy lib files
@@ -89,7 +94,7 @@ COPY --from=amd $OUTPUT/usr/lib/libdrm*.so* /usr/lib/plexmediaserver/lib/
 COPY --from=amd $OUTPUT/usr/lib/libelf*.so* /usr/lib/plexmediaserver/lib/
 COPY --from=amd $OUTPUT/usr/lib/libffi*.so* /usr/lib/plexmediaserver/lib/
 COPY --from=amd $OUTPUT/usr/lib/libgcc_s*.so* /usr/lib/plexmediaserver/lib/
-COPY --from=amd $OUTPUT/usr/lib/libkms*.so* /usr/lib/plexmediaserver/lib/
+# COPY --from=amd $OUTPUT/usr/lib/libkms*.so* /usr/lib/plexmediaserver/lib/
 COPY --from=amd $OUTPUT/usr/lib/libLLVM*.so* /usr/lib/plexmediaserver/lib/
 COPY --from=amd $OUTPUT/usr/lib/libstdc++*.so* /usr/lib/plexmediaserver/lib/
 COPY --from=amd $OUTPUT/usr/lib/libva*.so* /usr/lib/plexmediaserver/lib/
